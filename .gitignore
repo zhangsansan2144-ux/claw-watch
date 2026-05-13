@@ -1,0 +1,15 @@
+# ⚠️ 包含登录凭证(JWT, Chrome profile),绝不入库
+auth/
+
+# 监控数据快照和原始接口响应 —— 每个用户本地各跑各的,不入库
+data/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# 临时文件
+*.signal
+.DS_Store
