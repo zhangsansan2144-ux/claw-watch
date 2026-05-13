@@ -72,46 +72,21 @@ echo
 echo -e "${GREEN}${BOLD}✓ 安装完成${NC}"
 echo
 
+CRON_LINE="0 11 * * 2,5 cd \"$PROJECT_DIR\" && .venv/bin/claw-watch check --push >> data/cron.log 2>&1"
+# 用 PROJECT_DIR 作为 marker —— 它出现在 cron 行的 cd 部分,且包含完整路径,
+# 不会跟同机其他 claw-watch 安装(如果未来有)冲突
+CRON_MARKER="cd \"$PROJECT_DIR\""
+
 # 非交互模式(CI / 管道)直接打印手动提示退出
 if [ ! -t 0 ] || [ ! -t 1 ]; then
-    echo "下一步:"
-    echo "  export PATH=\"$PROJECT_DIR/.venv/bin:\$PATH\""
+    echo "下一步(交互式跑 ./setup.sh 会自动引导,这里手动版):"
     echo "  .venv/bin/claw-watch login    # 4 步向导:vidu / jimeng / liblib / 飞书 webhook"
     echo "  .venv/bin/claw-watch check --push"
+    echo "  装定时任务: (crontab -l 2>/dev/null; echo '$CRON_LINE') | crontab -"
     exit 0
 fi
 
-# ─── 询问 1:加 PATH ──────────────────────────────────────────────
-SHELL_NAME="$(basename "${SHELL:-zsh}")"
-case "$SHELL_NAME" in
-    zsh)  RC_FILE="$HOME/.zshrc" ;;
-    bash) RC_FILE="$HOME/.bash_profile" ;;
-    *)    RC_FILE="$HOME/.${SHELL_NAME}rc" ;;
-esac
-EXPORT_LINE="export PATH=\"$PROJECT_DIR/.venv/bin:\$PATH\""
-
-if [ -f "$RC_FILE" ] && grep -Fq "$PROJECT_DIR/.venv/bin" "$RC_FILE"; then
-    echo -e "${GREEN}✓${NC} PATH 已经在 $RC_FILE 里了,跳过这一步"
-    PATH_ADDED=1
-else
-    echo -e "${BOLD}加 PATH${NC}: 把 claw-watch 加到 $RC_FILE,以后直接敲 \`claw-watch ...\`,不用全路径"
-    read -r -p "  加吗? [Y/n]: " ans
-    ans=${ans:-Y}
-    if [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-        echo "" >> "$RC_FILE"
-        echo "# Added by claw-watch setup.sh" >> "$RC_FILE"
-        echo "$EXPORT_LINE" >> "$RC_FILE"
-        echo -e "  ${GREEN}✓${NC} 已写入 $RC_FILE"
-        echo -e "  ${YELLOW}↻${NC} 当前终端要让它生效:运行 \`source $RC_FILE\`(新开终端会自动生效)"
-        PATH_ADDED=1
-    else
-        echo "  跳过。后续用 \`.venv/bin/claw-watch\` 全路径即可"
-        PATH_ADDED=0
-    fi
-fi
-echo
-
-# ─── 询问 2:立刻进登录向导 ────────────────────────────────────────
+# ─── 询问 1:登录向导 ────────────────────────────────────────────────
 echo -e "${BOLD}登录向导${NC}: 4 步 —— vidu / 即梦 / liblib + 飞书 webhook"
 echo "  · 前 3 步会弹浏览器让你登录账号,每步可跳过"
 echo "  · 第 4 步粘飞书 webhook URL,会立刻发一张测试卡片"
@@ -119,11 +94,33 @@ read -r -p "  现在开始? [Y/n]: " ans
 ans=${ans:-Y}
 if [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]; then
     echo
-    exec .venv/bin/claw-watch login
+    .venv/bin/claw-watch login || echo -e "  ${YELLOW}⚠${NC}  向导未完成。后续可手动跑 \`.venv/bin/claw-watch login\`"
+fi
+echo
+
+# ─── 询问 2:装定时任务(crontab) ────────────────────────────────
+echo -e "${BOLD}定时任务${NC}: 周二 + 周五 北京时间 11:00 自动跑 + 推飞书"
+if crontab -l 2>/dev/null | grep -Fq "$CRON_MARKER"; then
+    echo -e "  ${GREEN}✓${NC} crontab 里已有这个 claw-watch 的任务,跳过"
+else
+    read -r -p "  装吗? [Y/n]: " ans
+    ans=${ans:-Y}
+    if [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+        (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
+        echo -e "  ${GREEN}✓${NC} 已装"
+        echo "    · 看任务:    crontab -l"
+        echo "    · 改时间:    crontab -e   (然后改带 claw-watch 的那一行)"
+        echo "    · 删任务:    crontab -e   (删那一行)"
+        echo "    · 看运行日志: tail -f $PROJECT_DIR/data/cron.log"
+    else
+        echo "  跳过。想之后装,跑这条:"
+        echo "    (crontab -l 2>/dev/null; echo '$CRON_LINE') | crontab -"
+    fi
 fi
 
 echo
-echo "随时可以手动跑:"
+echo -e "${GREEN}${BOLD}✓ 全部完成${NC}"
+echo "随时手动跑:"
 echo "  .venv/bin/claw-watch login          # 4 步登录向导"
 echo "  .venv/bin/claw-watch check --push   # 抓取 + 推飞书"
 echo "  .venv/bin/claw-watch status         # 看登录态健康"
