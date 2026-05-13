@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # claw-watch 一键安装脚本(macOS)
-# 用法: ./setup.sh
+# 用法: ./setup.sh [--allow-protected]
 # 安全可重入:venv 已存在会复用,不会破坏已有登录态
 
 set -euo pipefail
@@ -11,8 +11,53 @@ RED='\033[0;31m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# 解析 flag
+ALLOW_PROTECTED=0
+for arg in "$@"; do
+    case "$arg" in
+        --allow-protected) ALLOW_PROTECTED=1 ;;
+        -h|--help)
+            echo "用法: ./setup.sh [--allow-protected]"
+            echo "  --allow-protected   跳过 ~/Desktop|Documents|Downloads 的位置检查"
+            echo "                       (cron 默认无权读这些目录,定时会静默失败 — 知道风险才用)"
+            exit 0 ;;
+    esac
+done
+
 cd "$(dirname "$0")"
 PROJECT_DIR="$(pwd)"
+
+# ─── 受保护目录检查 ────────────────────────────────────────────────
+# macOS 默认不让 cron 读 ~/Desktop / ~/Documents / ~/Downloads,
+# 装在这些位置定时任务会静默失败(没报错,没通知,只是不跑)。
+# 写在最前面,fail fast。
+case "$PROJECT_DIR" in
+    "$HOME/Desktop"|"$HOME/Desktop"/*|\
+    "$HOME/Documents"|"$HOME/Documents"/*|\
+    "$HOME/Downloads"|"$HOME/Downloads"/*)
+        if [ "$ALLOW_PROTECTED" -ne 1 ]; then
+            BASENAME="$(basename "$PROJECT_DIR")"
+            echo
+            echo -e "${RED}${BOLD}✗ 项目在 macOS 受保护目录${NC}"
+            echo
+            echo "   当前位置: $PROJECT_DIR"
+            echo
+            echo "   问题: cron 默认无权读写 ~/Desktop / ~/Documents / ~/Downloads,"
+            echo -e "         定时任务会${RED}静默失败${NC}(没报错也没通知,只是周二/周五啥都不跑)。"
+            echo
+            echo "   建议挪到非保护目录,例如直接放 \$HOME 下:"
+            echo
+            echo -e "     ${BOLD}cd .. && mv \"$BASENAME\" \"$HOME/$BASENAME\" && cd \"$HOME/$BASENAME\" && ./setup.sh${NC}"
+            echo
+            echo "   如果你确认不打算用 cron(只手动跑),可以跳过这个检查:"
+            echo "     ./setup.sh --allow-protected"
+            echo
+            exit 1
+        else
+            echo -e "${YELLOW}⚠${NC}  在受保护目录但用 --allow-protected 跳过了检查;cron 装上后大概率不会跑"
+        fi
+        ;;
+esac
 
 echo
 echo -e "${BOLD}=== claw-watch 安装 ===${NC}"
@@ -116,6 +161,20 @@ else
         echo "  跳过。想之后装,跑这条:"
         echo "    (crontab -l 2>/dev/null; echo '$CRON_LINE') | crontab -"
     fi
+fi
+
+echo
+
+# ─── 询问 3:立刻手动跑一次 ─────────────────────────────────────────
+echo -e "${BOLD}首次手动跑一次?${NC}"
+echo "  作用:① 端到端验证(看一眼飞书群是否收到卡片)"
+echo "        ② 触发 macOS 任何权限弹窗(Chrome 控制 / 自动化 等),你点'允许'"
+echo "        ③ 给所有源建立第一份快照(下一次跑才能 diff 出新增)"
+read -r -p "  跑吗?[Y/n]: " ans
+ans=${ans:-Y}
+if [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+    echo
+    .venv/bin/claw-watch check --push || echo -e "  ${YELLOW}⚠${NC}  抓取过程有失败,看上面输出排查"
 fi
 
 echo

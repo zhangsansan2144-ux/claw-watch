@@ -10,18 +10,23 @@ AI 视频/图片生成产品的更新监控 —— 一行命令检查可灵 / Vi
 
 > 前置:macOS、Python 3.11+(没装的话:`brew install python@3.12`)
 
-**全程一行命令,后面跟 2 个 [Y/n] 提示**:
+> ⚠️ **clone 的位置很重要** —— 不要放在 `~/Desktop` / `~/Documents` / `~/Downloads`!这些是 macOS 受保护目录,cron 默认无权读写,定时任务会**静默失败**(没报错,没通知,只是周二/周五啥都不跑)。直接放主目录下(`~/claw-watch`)或自己的代码目录(`~/code/claw-watch`)就好。setup.sh 会检测并阻止你装在受保护位置。
+
+**全程一行命令,后面跟 3 个 [Y/n] 提示**:
 
 ```bash
-git clone https://github.com/zhangsansan2144-ux/claw-watch.git && cd claw-watch && ./setup.sh
+cd ~ && git clone https://github.com/zhangsansan2144-ux/claw-watch.git && cd claw-watch && ./setup.sh
 ```
 
 `setup.sh` 会:
-1. 创建 venv,装依赖,装 Chromium(~150MB)
+1. 检查目录位置(不在受保护目录),然后创建 venv、装依赖、装 Chromium(~150MB)
 2. 问 **现在开始登录向导?[Y/n]** —— 回车 = 进 4 步向导(下一节)
-3. 问 **装定时任务?周二+周五 11:00 自动跑+推飞书 [Y/n]** —— 回车 = 写一行到 crontab,以后不管它
+3. 问 **装定时任务?周二+周五 11:00 自动跑+推飞书 [Y/n]** —— 回车 = 写一行到 crontab
+4. 问 **首次手动跑一次?[Y/n]** —— 回车 = 立刻跑 `check --push`,顺便触发任何 macOS 权限弹窗(你点"允许")并建立基线快照
 
 > 不需要加 PATH —— 用全路径 `.venv/bin/claw-watch ...` 就够了,cron 也用全路径,所以加不加 PATH 对自动化没影响。
+
+> 如果你**不打算用 cron**(只手动跑),可以跳过位置检查:`./setup.sh --allow-protected`。
 
 ---
 
@@ -181,12 +186,13 @@ Claude Code 会自动调 `claw-watch` CLI 并把结果总结给你。
 
 | 现象 | 处理 |
 |---|---|
+| `setup.sh` 报 `项目在 macOS 受保护目录` | 把项目挪出 `~/Desktop` / `~/Documents` / `~/Downloads`,见上面"装一遍"的提示。临时不用 cron 可加 `--allow-protected` 跳过 |
 | `setup.sh` 报 "没找到 Python 3.11+" | `brew install python@3.12` 后重跑 |
 | `playwright install chromium` 失败 | 网络问题,重跑 `.venv/bin/playwright install chromium` |
 | 某个源 `登录态已过期` | 跑 `.venv/bin/claw-watch login <source>` 重新登录 |
 | 即梦 fetch 报错 / 拿不到数据 | 字节风控变化,可能需要重新跑 `.venv/bin/claw-watch login jimeng` |
 | 想看某次抓到的原始数据 | 看 `data/<source>_raw.json` |
-| cron 到点没跑 / 没收到推送 | 1) `crontab -l` 确认任务还在;2) `tail data/cron.log` 看错误;3) macOS 首次跑 cron 可能弹"是否允许 cron 后台运行"对话框,允许它 |
+| cron 到点没跑 / 没收到推送 | 1) `crontab -l` 确认任务还在;2) `tail data/cron.log` 看错误;3) 项目在不在受保护目录?见上面 |
 | 想停掉定时任务 | `crontab -e`,删除带 `claw-watch` 的那一行 |
 
 ---
