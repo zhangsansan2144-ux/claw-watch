@@ -127,6 +127,90 @@ LOGIN_STATUS="跳过"
 CRON_STATUS="跳过"
 FIRST_RUN_STATUS="跳过"
 
+print_cron_fix_help() {
+    local err="$1"
+
+    if [ -n "$err" ]; then
+        echo "    系统返回: $err"
+    fi
+
+    case "$err" in
+        *"Operation not permitted"*|*"operation not permitted"*|*"Permission denied"*|*"permission denied"*)
+            echo "    处理办法:"
+            echo "      1) 打开 系统设置 → 隐私与安全性 → 完全磁盘访问权限"
+            echo "      2) 给你正在用的 Terminal/iTerm 打开权限"
+            echo "      3) 完全退出终端,重新打开,再回到这里重试"
+            ;;
+        *"bad minute"*|*"errors in crontab file"*|*"installing new crontab"*)
+            echo "    处理办法:"
+            echo "      1) 跑 crontab -e"
+            echo "      2) 删除明显不完整/乱码/中文提示那几行"
+            echo "      3) 保存退出后回到这里重试"
+            ;;
+        "")
+            echo "    没拿到系统错误详情。通常重试一次即可;如果还失败,先跑 crontab -l 看是否正常。"
+            ;;
+        *)
+            echo "    处理办法:"
+            echo "      1) 先跑 crontab -l 看当前定时任务是否能正常读取"
+            echo "      2) 如果有权限报错,按系统设置里的隐私权限处理"
+            echo "      3) 如果有格式报错,跑 crontab -e 修掉坏行后重试"
+            ;;
+    esac
+}
+
+install_cron_with_guidance() {
+    local err_file err ans
+
+    while true; do
+        EXISTING_CRON="$(crontab -l 2>/dev/null || true)"
+        err_file="$(mktemp -t claw-watch-cron.XXXXXX)"
+
+        if (printf '%s\n' "$EXISTING_CRON"; echo "$CRON_LINE") | crontab - 2>"$err_file"; then
+            rm -f "$err_file"
+            if crontab -l 2>/dev/null | grep -Fq "$CRON_MARKER"; then
+                echo -e "  ${GREEN}✓${NC} 已装"
+                CRON_STATUS="已安装"
+                echo "    · 看任务:    crontab -l"
+                echo "    · 改时间:    crontab -e   (然后改带 claw-watch 的那一行)"
+                echo "    · 删任务:    crontab -e   (删那一行)"
+                echo "    · 看运行日志: tail -f $PROJECT_DIR/data/cron.log"
+                return 0
+            fi
+
+            echo -e "  ${YELLOW}⚠${NC}  crontab 命令返回成功,但没查到任务。请重试一次。"
+        else
+            err="$(tr '\n' ' ' < "$err_file" | sed 's/[[:space:]]*$//')"
+            rm -f "$err_file"
+            echo -e "  ${YELLOW}⚠${NC}  crontab 写入失败,定时任务还没装上"
+            print_cron_fix_help "$err"
+        fi
+
+        echo
+        echo "    这一步只影响自动定时;登录和首次手动验证仍然可以继续。"
+        read -r -p "    处理好后按 r 重试; 暂时不装按 s 跳过; 退出按 q: " ans
+        ans=${ans:-r}
+        case "$ans" in
+            r|R|retry|Retry)
+                echo "    好,重试安装定时任务..."
+                ;;
+            s|S|skip|Skip)
+                CRON_STATUS="安装失败"
+                echo "  已跳过定时任务。后面会继续做首次手动验证。"
+                return 1
+                ;;
+            q|Q|quit|Quit|exit|Exit)
+                CRON_STATUS="安装失败"
+                echo "  已退出安装。后续可重新跑 ./setup.sh 继续。"
+                exit 1
+                ;;
+            *)
+                echo "    无效输入,默认重试。"
+                ;;
+        esac
+    done
+}
+
 # 非交互模式(CI / 管道)直接打印手动提示退出
 if [ ! -t 0 ] || [ ! -t 1 ]; then
     echo "下一步(交互式跑 ./setup.sh 会自动引导,这里手动版):"
@@ -163,20 +247,7 @@ else
     read -r -p "  装吗? [Y/n]: " ans
     ans=${ans:-Y}
     if [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-        if (printf '%s\n' "$EXISTING_CRON"; echo "$CRON_LINE") | crontab -; then
-            echo -e "  ${GREEN}✓${NC} 已装"
-            CRON_STATUS="已安装"
-            echo "    · 看任务:    crontab -l"
-            echo "    · 改时间:    crontab -e   (然后改带 claw-watch 的那一行)"
-            echo "    · 删任务:    crontab -e   (删那一行)"
-            echo "    · 看运行日志: tail -f $PROJECT_DIR/data/cron.log"
-        else
-            CRON_STATUS="安装失败"
-            echo -e "  ${YELLOW}⚠${NC}  crontab 写入失败,先跳过定时任务安装"
-            echo "    不影响下面的首次手动验证;只是暂时不会自动定时跑。"
-            echo "    之后可重试:"
-            echo "      (crontab -l 2>/dev/null; echo '$CRON_LINE') | crontab -"
-        fi
+        install_cron_with_guidance || true
     else
         CRON_STATUS="跳过"
         echo "  跳过。想之后装,跑这条:"
