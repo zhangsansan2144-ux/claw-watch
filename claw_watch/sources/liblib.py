@@ -67,6 +67,11 @@ TRACKING_COOKIES = {
     "sajssdk_2015_cross_new_user",
     "sensorsdata2015jssdkcross", "sensorsdata2015jssdkchannel",
 }
+TRACKING_COOKIE_PREFIXES = ("_ga_", "Hm_lvt_", "Hm_lpvt_")
+
+
+def _is_tracking_cookie(name: str) -> bool:
+    return name in TRACKING_COOKIES or name.startswith(TRACKING_COOKIE_PREFIXES)
 
 
 def _start_chrome(headless: bool = False) -> None:
@@ -136,7 +141,7 @@ def _login_health() -> LoginHealth:
         for c in state.get("cookies", []):
             if "liblib.art" not in c.get("domain", ""):
                 continue
-            if c.get("name") in TRACKING_COOKIES:
+            if _is_tracking_cookie(c.get("name", "")):
                 continue
             exp_ts = c.get("expires", -1)
             if exp_ts and exp_ts > 0 and (best_exp is None or exp_ts > best_exp):
@@ -305,7 +310,7 @@ class LiblibSource(BaseSource):
                 domain = c.get("domain", "")
                 if "liblib.art" not in domain:
                     continue
-                if name in initial_cookie_names or name in TRACKING_COOKIES:
+                if name in initial_cookie_names or _is_tracking_cookie(name):
                     continue
                 if not c.get("value"):
                     continue
@@ -362,7 +367,10 @@ class LiblibSource(BaseSource):
                     try:
                         cur = {c["name"] for c in context.cookies()
                                if "liblib.art" in c.get("domain", "")}
-                        new = cur - initial_cookie_names - TRACKING_COOKIES
+                        new = {
+                            name for name in (cur - initial_cookie_names)
+                            if not _is_tracking_cookie(name)
+                        }
                         if new:
                             print(f"[兜底] cookie 增量 {new},尝试保存")
                             login_detected["ok"] = True

@@ -183,8 +183,8 @@ def _perform_login() -> None:
     print(f"\n=== Vidu 登录 ===")
     print(f"即将弹出浏览器,请完成:")
     print(f"  1. 登录 Vidu 账号")
-    print(f"  2. (可选)点🔔切到「平台消息」让接口先跑一次")
-    print(f"完成后回到终端按 Enter")
+    print(f"  2. 点右上角🔔,切到「平台消息」,等消息列表加载出来")
+    print(f"完成后再回到终端按 Enter")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)

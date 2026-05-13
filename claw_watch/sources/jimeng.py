@@ -238,8 +238,8 @@ class JimengSource(BaseSource):
         print(f"\n=== 即梦 登录 ===")
         print(f"即将弹出 Chrome,请完成:")
         print(f"  1. 登录账号")
-        print(f"  2. (可选)点🔔切「官方消息」让接口先跑一次")
-        print(f"完成后回到终端按 Enter")
+        print(f"  2. 点左下角🔔,切到「官方消息」,等消息列表加载出来")
+        print(f"完成后再回到终端按 Enter")
 
         _start_chrome()
         if not _wait_for_cdp(CDP_PORT, timeout_s=15):
