@@ -24,6 +24,15 @@ PROFILE_NAME = "jimeng"     # → auth/jimeng_chrome_profile/
 AUTH_NAME = "jimeng"        # → auth/jimeng_auth.json(健康检查用)
 
 
+def _profile_alive() -> bool:
+    """是否还有 Chrome 进程占着我们的 profile。"""
+    profile = paths.chrome_profile(PROFILE_NAME)
+    return subprocess.run(
+        ["pgrep", "-f", f"user-data-dir={profile}"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+
 def _start_chrome(extra_args: Optional[list[str]] = None) -> None:
     """用 `open -na` 启一个全新 Chrome 实例。
 
@@ -33,9 +42,26 @@ def _start_chrome(extra_args: Optional[list[str]] = None) -> None:
 
     返回 None —— `open` 自身瞬间退出,Chrome 在后台独立运行。后续靠 _stop_chrome
     按 --user-data-dir 路径 pkill。
+
+    启动前先确认上一次的 Chrome 真死透了 —— 否则 profile 还被锁着,新 Chrome 会
+    fallback 到一份临时空白 profile,登录态全丢。
     """
     profile = paths.chrome_profile(PROFILE_NAME)
     profile.mkdir(exist_ok=True)
+
+    # 兜底:上一次 _stop_chrome 没等够 / 没被调用,这次先把 profile 释放出来
+    if _profile_alive():
+        deadline = time.time() + 8
+        while time.time() < deadline and _profile_alive():
+            time.sleep(0.3)
+        if _profile_alive():
+            subprocess.run(
+                ["pkill", "-9", "-f", f"user-data-dir={profile}"],
+                check=False,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            time.sleep(1)
+
     args = [
         f"--remote-debugging-port={CDP_PORT}",
         f"--user-data-dir={profile}",
@@ -68,14 +94,36 @@ def _wait_for_cdp(port: int, timeout_s: int = 15) -> bool:
     return False
 
 
-def _stop_chrome() -> None:
-    """按 --user-data-dir 路径精确 kill 我们启动的那个 Chrome,绝不动用户主 Chrome。"""
+def _stop_chrome(wait_s: int = 10) -> None:
+    """按 --user-data-dir 路径精确 kill 我们启动的那个 Chrome,绝不动用户主 Chrome。
+
+    发完 SIGTERM 必须**等 Chrome 真的退出**,不能立刻返回 —— 因为 Chrome 收到
+    SIGTERM 后要 2-5 秒做收尾:把 RAM 里的 cookie / IndexedDB / 网络状态
+    flush 到 profile 的 SQLite,释放 profile 锁。
+
+    如果不等就接着调 _start_chrome,新 Chrome 看到 profile 还被锁 → fallback 成
+    临时空白 profile → 登录态全丢。这是一个真实踩过的 bug。
+    """
     profile = paths.chrome_profile(PROFILE_NAME)
+    pattern = f"user-data-dir={profile}"
     subprocess.run(
-        ["pkill", "-f", f"user-data-dir={profile}"],
+        ["pkill", "-f", pattern],
         check=False,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
+    deadline = time.time() + wait_s
+    while time.time() < deadline:
+        if not _profile_alive():
+            time.sleep(0.5)  # 多等 0.5s 让 SQLite WAL checkpoint 完成
+            return
+        time.sleep(0.2)
+    # 超时仍未死,SIGKILL 兜底
+    subprocess.run(
+        ["pkill", "-9", "-f", pattern],
+        check=False,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    time.sleep(1)
 
 
 def _login_health() -> LoginHealth:
