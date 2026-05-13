@@ -6,7 +6,8 @@
   claw-watch check --output json         JSON 输出(给 agent 用)
   claw-watch check --output text         人类可读(默认)
   claw-watch status                      显示每个 source 的状态 + 登录健康
-  claw-watch login vidu                  跑一次手动登录流程
+  claw-watch login                       登录向导(依次跑 vidu/jimeng/liblib,可跳过)
+  claw-watch login vidu_notifications    只登录指定 source
   claw-watch sources                     列出所有可用 source
 """
 
@@ -172,16 +173,77 @@ def cmd_status(args) -> int:
     return 0
 
 
+# 登录向导:无参 `claw-watch login` 时依次走这三个。
+# (vidu_notifications 和 vidu_spotlights 共用同一份登录,所以只列一次)
+_WIZARD_LOGINS = [
+    ("vidu_notifications", "Vidu",   "vidu.cn  ·  覆盖通知 + 首页 Banner 两个源"),
+    ("jimeng",             "即梦",   "jimeng.jianying.com  ·  会弹出真 Chrome,登录后自动检测"),
+    ("liblib",             "LibLib", "liblib.art  ·  会弹出真 Chrome,登录后自动检测"),
+]
+
+
+def _login_one(src_name: str, display: str, hint: str) -> str:
+    """走一个 source 的登录,返回 'done' / 'skip' / 'quit'。"""
+    src = get_source(src_name)
+    health = src.login_health()
+
+    print()
+    print(f"  ── {display}  ({hint})")
+    if health and health.ok and health.days_left is not None:
+        status = f"已登录,{health.days_left} 天后过期"
+        default_hint = "[s]"
+        default = "s"
+    elif health and health.ok:
+        status = "已登录"
+        default_hint = "[s]"
+        default = "s"
+    else:
+        status = (health.note if health else "未登录") or "未登录"
+        default_hint = "[l]"
+        default = "l"
+    print(f"     当前状态: {status}")
+
+    while True:
+        ans = input(f"     [l]登录 / [s]跳过 / [q]退出向导  {default_hint}: ").strip().lower()
+        if not ans:
+            ans = default
+        if ans in ("l", "login", "y", "yes"):
+            try:
+                src.perform_login()
+            except Exception as e:
+                print(f"     [失败] {e}")
+            return "done"
+        if ans in ("s", "skip", "n", "no"):
+            print("     [跳过]")
+            return "skip"
+        if ans in ("q", "quit", "exit"):
+            return "quit"
+        print("     无效输入,请输 l / s / q")
+
+
 def cmd_login(args) -> int:
-    name = args.source
-    if name not in SOURCES:
-        print(f"未知 source '{name}',可选: {list(SOURCES)}", file=sys.stderr)
-        return 2
-    src = get_source(name)
-    if not src.requires_login:
-        print(f"{name} 不需要登录,直接 check 即可")
+    # 单个 source 模式
+    if args.source:
+        name = args.source
+        if name not in SOURCES:
+            print(f"未知 source '{name}',可选: {list(SOURCES)}", file=sys.stderr)
+            return 2
+        src = get_source(name)
+        if not src.requires_login:
+            print(f"{name} 不需要登录,直接 check 即可")
+            return 0
+        src.perform_login()
         return 0
-    src.perform_login()
+
+    # 向导模式
+    print("\n=== claw-watch 登录向导 ===")
+    print("将依次引导你登录 3 个需要账号的源。每一步都可以跳过。")
+    for src_name, display, hint in _WIZARD_LOGINS:
+        if _login_one(src_name, display, hint) == "quit":
+            print("\n向导已退出。后续可随时跑 `claw-watch login` 继续。")
+            return 0
+    print("\n=== 向导完成 ===")
+    print("跑 `claw-watch status` 看登录态,或 `claw-watch check` 试一次抓取。")
     return 0
 
 
@@ -215,8 +277,15 @@ def main(argv: list[str] | None = None) -> int:
     p_status = sub.add_parser("status", help="显示各 source 状态 + 登录态健康")
     p_status.set_defaults(func=cmd_status)
 
-    p_login = sub.add_parser("login", help="重新登录某个 source")
-    p_login.add_argument("source", help="source 名(vidu / jimeng)")
+    p_login = sub.add_parser(
+        "login",
+        help="登录需要账号的源。无参数=向导(依次走 vidu/jimeng/liblib)",
+    )
+    p_login.add_argument(
+        "source",
+        nargs="?",
+        help="只登录指定 source(vidu_notifications / jimeng / liblib)。省略则进入向导",
+    )
     p_login.set_defaults(func=cmd_login)
 
     p_sources = sub.add_parser("sources", help="列出所有 source")

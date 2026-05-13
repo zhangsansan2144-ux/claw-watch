@@ -1,154 +1,163 @@
 # claw-watch
 
-AI 视频/图片生成产品的更新监控 —— 一行命令检查可灵 / Vidu / 拍我 / 即梦的最新动态。
+AI 视频/图片生成产品的更新监控 —— 一行命令检查可灵 / Vidu / 即梦 / 海螺 / LibLib / TapNow / Lovart / Runway / 拍我的最新动态,可推送到飞书。
 
-## 监控源
+需要登录的源(Vidu / 即梦 / LibLib)用你**自己的账号**抓你**自己**的通知,所以每人都得各装各的。
 
-| Source | 站点 | 数据类型 | 是否登录 | 反爬难度 |
-|---|---|---|---|---|
-| `kling` | klingai.com | 官方更新公告 | ❌ | 无 |
-| `pai` | pai.video (PixVerse) | 首页 Banner | ❌ | 无 |
-| `hailuo` | hailuoai.com | 首页 Banner / 活动弹窗 | ❌ | 无 |
-| `tapnow` | app.tapnow.ai | 首页 Banner 轮播 / 右下角广告卡 | ❌ | 无(TLS 握手偶发超时,内置重试) |
-| `lovart` | www.lovart.ai | Changelog 「最新动态」 | ❌ | 无(Next.js 流式 chunk 抽 JSON,免登录公开页) |
-| `runway` | runwayml.com | Changelog 产品更新 | ❌ | 无(Next.js,headless 直通,innerText 行解析) |
-| `vidu_notifications` | vidu.cn | 通知中心「平台消息」 | ✅ | EdgeOne 指纹 |
-| `vidu_spotlights` | vidu.cn | 首页 Banner / Spotlights | ✅ | (跟上面共用登录) |
-| `jimeng` | jimeng.jianying.com | 通知中心「官方消息」 | ✅ | ByteDance 风控(需 CDP attach) |
-| `liblib` | liblib.art | 通知中心「官方通知」 | ✅ | 阿里 WAF + token-based(需 CDP 登录) |
+---
 
-## 安装
+## 装一遍 (5 步)
 
-需要 Python 3.11+ 和系统 Google Chrome(jimeng 监控用)。
+> 前置:macOS、Python 3.11+(没装的话:`brew install python@3.12`)
 
 ```bash
-cd /Users/edith/Desktop/aimon
-python3 -m venv .venv
-.venv/bin/pip install -e .
-.venv/bin/playwright install chromium     # ~150MB
-```
+# 1) 拉代码
+git clone https://github.com/<你的用户名>/claw-watch.git
+cd claw-watch
 
-装完后 `claw-watch` 在 `.venv/bin/` 里。可以把它加到 PATH 或者用全路径。
+# 2) 一键安装(创建 venv → 装依赖 → 装 Chromium ~150MB)
+./setup.sh
 
-## 用法
+# 3) 把 claw-watch 加到 PATH(可选,加了之后可以直接敲 claw-watch)
+echo 'export PATH="'"$(pwd)"'/.venv/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 
-```bash
-# 检查所有源,人类可读输出
+# 4) 登录 3 个需要账号的源(向导会引导,每步可跳过)
+claw-watch login
+
+# 5) 跑一次试试
 claw-watch check
-
-# 只检查指定源(逗号分隔)
-claw-watch check --source kling,pai
-
-# JSON 输出(给 agent / Claude Code 用)
-claw-watch check --output json
-
-# 检查 + 推送到飞书(有新增时才推)
-claw-watch check --push
-
-# 检查 + 每次必推
-claw-watch check --push always
-
-# 看各源状态 + 登录态健康
-claw-watch status
-
-# 重新登录 Vidu / 即梦(会弹浏览器)
-claw-watch login vidu
-claw-watch login jimeng
-
-# 列出所有 source
-claw-watch sources
 ```
 
-## 首次配置
+---
 
-需要登录的源(`vidu` / `jimeng`)第一次要手动登录:
+## 登录 (3 步)
+
+第 4 步会启动向导,依次问你:
+
+1. **Vidu** —— 弹无头浏览器,你登录账号(扫码 / 密码),回终端按 Enter 保存。覆盖 Vidu 通知 + 首页 Banner 两个源。
+2. **即梦** —— 弹**真 Chrome 窗口**(字节风控必需),登录后自动检测、保存、关闭。
+3. **LibLib** —— 同上,弹真 Chrome,登录后自动检测。
+
+随时可以重跑 `claw-watch login` 重新登录某一个,或单独登录:
 
 ```bash
-claw-watch login vidu      # 弹浏览器,扫码或账密登录,完成后回终端按 Enter
-claw-watch login jimeng    # 同上
-claw-watch login liblib    # 弹真 Chrome,登录后自动检测、保存、关闭,无需回终端
+claw-watch login vidu_notifications
+claw-watch login jimeng
+claw-watch login liblib
 ```
 
-登录态会过期。`claw-watch status` 能看到剩余天数:
-- Vidu JWT:约 2 周
-- 即梦 sessionid:约 1 年
-- LibLib usertoken:约 1 年(超长期 session)
+登录态会过期,跑 `claw-watch status` 看剩余天数:
 
-过期后再跑一次 `claw-watch login <source>` 即可。
+| 源 | 凭证 | 大约有效期 |
+|---|---|---|
+| Vidu | JWT | ~2 周 |
+| 即梦 | sessionid | ~1 年 |
+| LibLib | usertoken | ~1 年 |
+
+---
+
+## 定时跑 (1 步)
+
+每天早 9 点跑一次,加到 crontab:
+
+```cron
+0 9 * * * cd /path/to/claw-watch && .venv/bin/claw-watch check --push
+```
+
+(`--push` 需要先配飞书 webhook,见下面。)
+
+⚠️ **即梦每次会短暂弹 Chrome 窗口**(字节风控必需)。如果不希望被打扰,定时任务里排除即梦:
+
+```bash
+.venv/bin/claw-watch check --source kling,pai,hailuo,vidu_notifications,vidu_spotlights,liblib,tapnow,lovart,runway --push
+```
+
+---
 
 ## 飞书推送
 
 1. 飞书 App → 新建群聊(可以只有你自己)→ 群机器人 → 添加自定义机器人 → 复制 webhook URL
 2. 设环境变量:
    ```bash
-   export FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx"
+   echo 'export FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx"' >> ~/.zshrc
+   source ~/.zshrc
    ```
-3. 跑 `claw-watch check --push` 就会推送
+3. `claw-watch check --push` 就会推送
+   - 默认只在**有新增 / 警告 / 错误**时推(避免每天推空消息)
+   - `--push always` 每次必推
+   - 也可以直接 `--webhook URL` 临时覆盖
 
-或者直接传 `--webhook URL`。
+---
 
-## 定时运行
+## 监控源一览
 
-macOS launchd / crontab 示例(每天早 9 点跑):
+| Source | 站点 | 数据类型 | 是否登录 |
+|---|---|---|---|
+| `kling` | klingai.com | 官方更新公告 | ❌ |
+| `pai` | pai.video | 首页 Banner | ❌ |
+| `hailuo` | hailuoai.com | 首页 Banner / 活动弹窗 | ❌ |
+| `tapnow` | app.tapnow.ai | 首页 Banner / 广告卡 | ❌ |
+| `lovart` | www.lovart.ai | Changelog 最新动态 | ❌ |
+| `runway` | runwayml.com | Changelog 产品更新 | ❌ |
+| `vidu_notifications` | vidu.cn | 通知中心 平台消息 | ✅ |
+| `vidu_spotlights` | vidu.cn | 首页 Banner / Spotlights | ✅(共用 Vidu 登录) |
+| `jimeng` | jimeng.jianying.com | 通知中心 官方消息 | ✅ |
+| `liblib` | liblib.art | 通知中心 官方通知 | ✅ |
 
-```cron
-0 9 * * * cd /Users/edith/Desktop/aimon && .venv/bin/claw-watch check --push
-```
+---
 
-⚠️ 注意:`jimeng` 监控**每次会短暂弹出 Chrome 窗口**(字节风控必需)。如果你不希望被打扰,可以排除即梦:
+## 常用命令
+
 ```bash
-claw-watch check --source kling,pai,hailuo,vidu_notifications,vidu_spotlights --push
+claw-watch check                       # 检查全部
+claw-watch check --source kling,pai    # 只查指定的
+claw-watch check --output json         # JSON 输出(给 agent 用)
+claw-watch check --push                # 检查 + 飞书推送
+claw-watch status                      # 看各源状态 + 登录态健康
+claw-watch login                       # 登录向导
+claw-watch login <source>              # 单独登录某个源
+claw-watch sources                     # 列出所有源
 ```
+
+---
 
 ## Claude Code 集成
 
-skill 已经装在 `~/.claude/skills/claw-watch/SKILL.md`。
+skill 装在 `~/.claude/skills/claw-watch/SKILL.md`(本仓库不带,需要单独部署)。装上之后在 Claude Code 里直接问:
 
-在 Claude Code 里直接问:
 - "今天可灵有啥新功能?"
 - "看一下 AI 产品监控状态"
 - "Vidu 登录态过期了,帮我重新登录"
 
-Claude Code 会自动调用 `claw-watch` CLI 并把结果用自然语言总结给你。
+Claude Code 会自动调 `claw-watch` CLI 并把结果总结给你。
 
-## 项目结构
+---
 
-```
-aimon/
-├── pyproject.toml
-├── claw_watch/
-│   ├── cli.py              # 命令行入口
-│   ├── paths.py            # data/ 和 auth/ 路径
-│   ├── storage.py          # 快照 / diff
-│   ├── notify.py           # 飞书 webhook 推送
-│   └── sources/
-│       ├── base.py         # BaseSource + Item + FetchResult
-│       ├── kling.py
-│       ├── pai.py
-│       ├── hailuo.py
-│       ├── vidu.py         # 一次 fetch 两个 source(notifications + spotlights)
-│       ├── jimeng.py       # CDP attach 真实 Chrome
-│       └── liblib.py       # 登录用真 Chrome(open -na),fetch 用 headless
-├── data/                   # 快照 + 原始接口响应(可入 Git)
-└── auth/                   # ⚠️ 登录凭证,不要入 Git
-```
+## 数据隐私 ⚠️
 
-## 数据隐私
+- `auth/vidu_auth.json` —— 含 JWT,可登录你的 Vidu 账号
+- `auth/jimeng_chrome_profile/` —— 含 Cookie,可登录你的字节账号
+- `auth/liblib_chrome_profile/` + `auth/liblib_auth.json` —— 含 usertoken,可登录你的 LibLib 账号
 
-- `auth/vidu_auth.json` 含 JWT(账号凭证)
-- `auth/jimeng_chrome_profile/` 含 Cookie 数据库(可登录你的字节账号)
-- `auth/liblib_chrome_profile/` + `auth/liblib_auth.json` 含 usertoken(可登录你的 LibLib 账号)
-- **千万别提交到公开仓库,千万别分享给任何人**
+**`auth/` 已加到 `.gitignore`,千万别绕过、千万别分享。**
 
-如果要给同事用,他们需要:
-1. 复制本仓库代码(不带 `auth/` 和 `data/`)
-2. 跑 `pip install -e .` + `playwright install chromium`
-3. 自己跑 `claw-watch login vidu` / `claw-watch login jimeng` 登录他们自己的账号
-4. 自己建飞书 webhook 并 `export FEISHU_WEBHOOK=...`
+`data/*.json`(快照 + 原始接口响应)也不入仓 —— 每个用户本地各跑各的,数据不共享。
 
-## 添加新的监控源
+---
 
-1. 在 `claw_watch/sources/` 加 `<name>.py`,继承 `BaseSource`
-2. 实现 `fetch()` 返回 `FetchResult`(必需)
-3. 如果需要登录:实现 `login_health()` 和 `perform_login()`,设 `requires_login = True`
-4. 在 `sources/__init__.py` 的 `SOURCES` dict 里注册
+## 排错
+
+| 现象 | 处理 |
+|---|---|
+| `setup.sh` 报 "没找到 Python 3.11+" | `brew install python@3.12` 后重跑 |
+| `playwright install chromium` 失败 | 网络问题,重跑 `.venv/bin/playwright install chromium` |
+| `claw-watch check` 某个源 `登录态已过期` | 跑 `claw-watch login <source>` 重新登录 |
+| 即梦 fetch 报错 / 拿不到数据 | 字节风控变化,可能需要重新跑 `claw-watch login jimeng` |
+| 想看某次抓到的原始数据 | 看 `data/<source>_raw.json` |
+
+---
+
+## 给开发者
+
+想加新的监控源、了解架构、看项目布局,见 [CONTRIBUTING.md](CONTRIBUTING.md)。
