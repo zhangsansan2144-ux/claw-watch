@@ -167,6 +167,10 @@ class JimengSource(BaseSource):
                                login=_login_health())
 
         captured: dict[str, dict | None] = {"data": None}
+        # 诊断:记录所有 get_notice_list 响应(无论 notice_type)。失败时 dump 到 data/jimeng_debug.json
+        debug_responses: list[dict] = []
+        debug_events: list[str] = []
+
         _start_chrome()
         if not _wait_for_cdp(CDP_PORT, timeout_s=15):
             _stop_chrome()
@@ -185,16 +189,28 @@ class JimengSource(BaseSource):
                         return
                     try:
                         body = response.json()
-                        data = body.get("data") or {}
-                        if data.get("notice_type") != 1:
-                            return
-                        notices = data.get("notice_list") or []
-                        prev = captured["data"]
-                        prev_count = len((prev or {}).get("data", {}).get("notice_list") or [])
-                        if prev is None or len(notices) > prev_count:
-                            captured["data"] = body
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        debug_responses.append({"url": response.url, "status": response.status,
+                                                "json_error": str(e)})
+                        return
+
+                    data = body.get("data") or {}
+                    notice_type = data.get("notice_type")
+                    notices = data.get("notice_list") or []
+                    debug_responses.append({
+                        "url": response.url,
+                        "status": response.status,
+                        "notice_type": notice_type,
+                        "notice_count": len(notices),
+                        "ret": body.get("ret"),
+                        "errmsg": body.get("errmsg"),
+                    })
+                    if notice_type != 1:
+                        return
+                    prev = captured["data"]
+                    prev_count = len((prev or {}).get("data", {}).get("notice_list") or [])
+                    if prev is None or len(notices) > prev_count:
+                        captured["data"] = body
 
                 for pg in context.pages:
                     pg.on("response", on_response)
@@ -205,8 +221,9 @@ class JimengSource(BaseSource):
                 # 渲染稍慢,刚好踩在 2 个的临界点 → 取错下面的「应用下载」当 bell
                 try:
                     page.wait_for_selector("#SiderMenuNotification", timeout=20000)
+                    debug_events.append("SiderMenuNotification 出现")
                 except Exception:
-                    pass
+                    debug_events.append("SiderMenuNotification 20s 内没出现")
                 page.wait_for_timeout(1000)
 
                 bell = page.evaluate(
@@ -230,17 +247,21 @@ class JimengSource(BaseSource):
                 )
 
                 if not bell:
+                    debug_events.append("bell SVG 没找到")
+                    self._dump_debug(page, debug_responses, debug_events)
                     return FetchResult(source=self.name, ok=False,
-                                       error="没找到左下角🔔",
+                                       error="没找到左下角🔔(诊断写到 data/jimeng_debug.{json,png})",
                                        login=_login_health())
 
+                debug_events.append(f"bell 命中 ({bell['x']:.0f}, {bell['y']:.0f}),点击")
                 page.mouse.click(bell["x"], bell["y"])
                 page.wait_for_timeout(1500)
 
                 try:
                     page.get_by_text("官方消息", exact=True).first.click(timeout=5000)
-                except Exception:
-                    pass
+                    debug_events.append("「官方消息」点击 OK")
+                except Exception as e:
+                    debug_events.append(f"「官方消息」点击失败: {e}")
 
                 # 等响应,最多 10 秒
                 for _ in range(20):
@@ -248,6 +269,10 @@ class JimengSource(BaseSource):
                     if captured["data"] is not None:
                         page.wait_for_timeout(2000)
                         break
+
+                # 失败时 dump 调试信息
+                if captured["data"] is None:
+                    self._dump_debug(page, debug_responses, debug_events)
         except Exception as e:
             return FetchResult(source=self.name, ok=False, error=f"浏览器异常: {e}",
                                login=_login_health())
@@ -256,8 +281,14 @@ class JimengSource(BaseSource):
 
         raw = captured["data"]
         if raw is None:
+            seen_types = sorted({r.get("notice_type") for r in debug_responses
+                                  if "notice_type" in r})
+            hint = (f"看到 {len(debug_responses)} 个 get_notice_list 响应,notice_type={seen_types}; "
+                    f"详情看 data/jimeng_debug.json"
+                    if debug_responses else
+                    "完全没拦到 get_notice_list 响应 —— bell/官方消息 点击没生效")
             return FetchResult(source=self.name, ok=False,
-                               error="没拦到 get_notice_list(notice_type=1)",
+                               error=f"没拦到 notice_type=1 的响应。{hint}",
                                login=_login_health())
 
         with open(paths.raw_dump_file(self.name), "w") as f:
@@ -276,6 +307,25 @@ class JimengSource(BaseSource):
                 url=n.get("url") or None,
             ))
         return FetchResult(source=self.name, ok=True, items=items, login=_login_health())
+
+    @staticmethod
+    def _dump_debug(page, debug_responses: list, debug_events: list) -> None:
+        """fetch 失败时把诊断信息写到 data/jimeng_debug.{json,png}。"""
+        try:
+            with open(paths.DATA_DIR / "jimeng_debug.json", "w") as f:
+                json.dump({
+                    "page_url": page.url,
+                    "page_title": page.title(),
+                    "events": debug_events,
+                    "get_notice_list_responses": debug_responses,
+                    "page_text_snippet": page.evaluate("() => document.body.innerText.slice(0, 800)"),
+                }, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        try:
+            page.screenshot(path=str(paths.DATA_DIR / "jimeng_debug.png"), full_page=True)
+        except Exception:
+            pass
 
     def login_health(self) -> LoginHealth:
         return _login_health()
