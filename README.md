@@ -6,45 +6,41 @@ AI 视频/图片生成产品的更新监控 —— 一行命令检查可灵 / Vi
 
 ---
 
-## 装一遍 (5 步)
+## 装一遍
 
 > 前置:macOS、Python 3.11+(没装的话:`brew install python@3.12`)
 
+**全程一行命令**:
+
 ```bash
-# 1) 拉代码
-git clone https://github.com/zhangsansan2144-ux/claw-watch.git
-cd claw-watch
-
-# 2) 一键安装(创建 venv → 装依赖 → 装 Chromium ~150MB)
-./setup.sh
-
-# 3) 把 claw-watch 加到 PATH(可选,加了之后可以直接敲 claw-watch)
-echo 'export PATH="'"$(pwd)"'/.venv/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-
-# 4) 登录 3 个需要账号的源(向导会引导,每步可跳过)
-claw-watch login
-
-# 5) 跑一次试试
-claw-watch check
+git clone https://github.com/zhangsansan2144-ux/claw-watch.git && cd claw-watch && ./setup.sh
 ```
+
+`setup.sh` 会:
+1. 创建 venv,装依赖,装 Chromium(~150MB)
+2. 问你 **要不要把 `claw-watch` 加到 PATH**(写到 `~/.zshrc`),回车 = 同意
+3. 问你 **要不要立刻进登录向导**,回车 = 同意 → 自动 `exec claw-watch login`
 
 ---
 
-## 登录 (3 步)
+## 登录向导 (4 步,每步可跳过)
 
-第 4 步会启动向导,依次问你:
+`claw-watch login` 启动向导,依次问你:
 
-1. **Vidu** —— 弹无头浏览器,你登录账号(扫码 / 密码),回终端按 Enter 保存。覆盖 Vidu 通知 + 首页 Banner 两个源。
-2. **即梦** —— 弹**真 Chrome 窗口**(字节风控必需),登录后自动检测、保存、关闭。
+1. **Vidu** —— 自动弹无头浏览器到登录页,你扫码/输密码,回终端按 Enter 保存。覆盖 Vidu 通知 + 首页 Banner 两个源。
+2. **即梦** —— 自动弹**真 Chrome 窗口**(字节风控必需),登录后自动检测、保存、关闭。
 3. **LibLib** —— 同上,弹真 Chrome,登录后自动检测。
+4. **飞书 webhook** —— 提示你在飞书 App 里建机器人拿 URL,粘贴到终端 → 立刻发一张测试卡片到群里 → 保存到 `auth/feishu_webhook.txt`。
 
-随时可以重跑 `claw-watch login` 重新登录某一个,或单独登录:
+每一步开头会显示当前状态(已登录还剩 X 天 / 已配置 / 未配置),已经搞定的默认 [s]跳过,没搞定的默认 [l]登录。
+
+想单独再做某一步:
 
 ```bash
 claw-watch login vidu_notifications
 claw-watch login jimeng
 claw-watch login liblib
+claw-watch login                     # 重新走完整向导(配过的会默认跳)
 ```
 
 登录态会过期,跑 `claw-watch status` 看剩余天数:
@@ -54,16 +50,20 @@ claw-watch login liblib
 | Vidu | JWT | ~2 周 |
 | 即梦 | sessionid | ~1 年 |
 | LibLib | usertoken | ~1 年 |
+| 飞书 webhook | URL | 不过期(除非你在飞书里删机器人) |
 
 ---
 
 ## 定时跑 (1 步)
 
-每天早 9 点跑一次,加到 crontab:
+每周二 + 周五 北京时间 11:00 跑一次,加到 crontab:
 
 ```cron
-0 9 * * * cd /path/to/claw-watch && .venv/bin/claw-watch check --push
+0 11 * * 2,5 cd /path/to/claw-watch && .venv/bin/claw-watch check --push
 ```
+
+> cron 时间字段:`分 时 日 月 星期`。`2,5` = 周二 + 周五(0=周日, 1=周一, ..., 6=周六)。
+> 改成每天就把 `2,5` 换成 `*`;只想周一三五就 `1,3,5`。
 
 (`--push` 需要先配飞书 webhook,见下面。)
 
@@ -77,16 +77,34 @@ claw-watch login liblib
 
 ## 飞书推送
 
+**最简单的配法**:跑 `claw-watch login`,走到第 4 步,粘 webhook URL 即可(向导会发测试卡片确认 + 保存到 `auth/feishu_webhook.txt`)。
+
+**手动配 webhook**(不想走向导):
+
 1. 飞书 App → 新建群聊(可以只有你自己)→ 群机器人 → 添加自定义机器人 → 复制 webhook URL
-2. 设环境变量:
-   ```bash
-   echo 'export FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx"' >> ~/.zshrc
-   source ~/.zshrc
-   ```
-3. `claw-watch check --push` 就会推送
-   - 默认只在**有新增 / 警告 / 错误**时推(避免每天推空消息)
-   - `--push always` 每次必推
-   - 也可以直接 `--webhook URL` 临时覆盖
+2. 任选一种方式存 URL:
+   - **写文件**(推荐,cron 也能读):
+     ```bash
+     echo "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx" > auth/feishu_webhook.txt
+     ```
+   - **设环境变量**(只对当前 shell):
+     ```bash
+     export FEISHU_WEBHOOK="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx"
+     ```
+3. `claw-watch check --push` 就会推送一张富文本卡片
+   - **每次都推一条**,即便所有源都平稳无新增 —— 反向证明监控真的跑过、各账号还没掉线。卡片 header 颜色:🟢 平稳 / 🔵 有新增 / 🟠 有警告 / 🔴 有失败
+   - 卡片包含「各源今日状态」段落,逐一列出每个源是新增、平稳、警告还是失败;再下面才是新增详情、警告、失败的展开
+   - `--webhook URL` 临时覆盖以上两种存储
+
+> 查找顺序:`--webhook` flag > 环境变量 `FEISHU_WEBHOOK` > 文件 `auth/feishu_webhook.txt`
+
+### 调样式 / 不真发
+
+```bash
+claw-watch check --push --dry-run
+```
+
+`--dry-run` 模式下只把卡片 JSON 打到 stdout,不真推。改 `notify.py` 里的样式时拿这个对着调,免得反复 spam 群。
 
 ---
 
@@ -113,7 +131,8 @@ claw-watch login liblib
 claw-watch check                       # 检查全部
 claw-watch check --source kling,pai    # 只查指定的
 claw-watch check --output json         # JSON 输出(给 agent 用)
-claw-watch check --push                # 检查 + 飞书推送
+claw-watch check --push                # 检查 + 飞书推送(每次都推一张卡片)
+claw-watch check --push --dry-run      # 不真发,只打印卡片 JSON 调样式用
 claw-watch status                      # 看各源状态 + 登录态健康
 claw-watch login                       # 登录向导
 claw-watch login <source>              # 单独登录某个源

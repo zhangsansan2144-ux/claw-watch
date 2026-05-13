@@ -71,17 +71,60 @@ fi
 echo
 echo -e "${GREEN}${BOLD}✓ 安装完成${NC}"
 echo
-echo -e "${BOLD}下一步:${NC}"
+
+# 非交互模式(CI / 管道)直接打印手动提示退出
+if [ ! -t 0 ] || [ ! -t 1 ]; then
+    echo "下一步:"
+    echo "  export PATH=\"$PROJECT_DIR/.venv/bin:\$PATH\""
+    echo "  .venv/bin/claw-watch login    # 4 步向导:vidu / jimeng / liblib / 飞书 webhook"
+    echo "  .venv/bin/claw-watch check --push"
+    exit 0
+fi
+
+# ─── 询问 1:加 PATH ──────────────────────────────────────────────
+SHELL_NAME="$(basename "${SHELL:-zsh}")"
+case "$SHELL_NAME" in
+    zsh)  RC_FILE="$HOME/.zshrc" ;;
+    bash) RC_FILE="$HOME/.bash_profile" ;;
+    *)    RC_FILE="$HOME/.${SHELL_NAME}rc" ;;
+esac
+EXPORT_LINE="export PATH=\"$PROJECT_DIR/.venv/bin:\$PATH\""
+
+if [ -f "$RC_FILE" ] && grep -Fq "$PROJECT_DIR/.venv/bin" "$RC_FILE"; then
+    echo -e "${GREEN}✓${NC} PATH 已经在 $RC_FILE 里了,跳过这一步"
+    PATH_ADDED=1
+else
+    echo -e "${BOLD}加 PATH${NC}: 把 claw-watch 加到 $RC_FILE,以后直接敲 \`claw-watch ...\`,不用全路径"
+    read -r -p "  加吗? [Y/n]: " ans
+    ans=${ans:-Y}
+    if [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+        echo "" >> "$RC_FILE"
+        echo "# Added by claw-watch setup.sh" >> "$RC_FILE"
+        echo "$EXPORT_LINE" >> "$RC_FILE"
+        echo -e "  ${GREEN}✓${NC} 已写入 $RC_FILE"
+        echo -e "  ${YELLOW}↻${NC} 当前终端要让它生效:运行 \`source $RC_FILE\`(新开终端会自动生效)"
+        PATH_ADDED=1
+    else
+        echo "  跳过。后续用 \`.venv/bin/claw-watch\` 全路径即可"
+        PATH_ADDED=0
+    fi
+fi
 echo
-echo "  1. 把 claw-watch 加到 PATH(可选,不加就用全路径):"
-echo "       export PATH=\"$PROJECT_DIR/.venv/bin:\$PATH\""
+
+# ─── 询问 2:立刻进登录向导 ────────────────────────────────────────
+echo -e "${BOLD}登录向导${NC}: 4 步 —— vidu / 即梦 / liblib + 飞书 webhook"
+echo "  · 前 3 步会弹浏览器让你登录账号,每步可跳过"
+echo "  · 第 4 步粘飞书 webhook URL,会立刻发一张测试卡片"
+read -r -p "  现在开始? [Y/n]: " ans
+ans=${ans:-Y}
+if [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+    echo
+    exec .venv/bin/claw-watch login
+fi
+
 echo
-echo "  2. 登录需要账号的源(vidu / jimeng / liblib):"
-echo "       .venv/bin/claw-watch login"
-echo "     向导会依次引导你登录 3 个源,每步可跳过"
-echo
-echo "  3. 跑一次试试:"
-echo "       .venv/bin/claw-watch check"
-echo
-echo "  4. (可选)配飞书推送 + 定时:见 README"
+echo "随时可以手动跑:"
+echo "  .venv/bin/claw-watch login          # 4 步登录向导"
+echo "  .venv/bin/claw-watch check --push   # 抓取 + 推飞书"
+echo "  .venv/bin/claw-watch status         # 看登录态健康"
 echo

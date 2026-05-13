@@ -82,27 +82,25 @@ def cmd_check(args) -> int:
         _print_text(overall)
 
     # 推送到飞书(如果开启)
+    # --push 设置就一定推一条卡片,即便全平稳 —— 卡片里的"各源今日状态"反向证明
+    # 监控真的跑过、各账号也没掉线。--dry-run 时只打印 JSON 不真发,用来调样式。
     if args.push:
-        webhook = args.webhook or notify.get_webhook_url()
-        if not webhook:
-            print("[警告] --push 但没找到 webhook URL,设 FEISHU_WEBHOOK 环境变量或用 --webhook", file=sys.stderr)
+        card = notify.build_card(overall)
+        if args.dry_run:
+            print("\n[dry-run] 飞书卡片 payload:")
+            print(json.dumps({"msg_type": "interactive", "card": card},
+                             ensure_ascii=False, indent=2))
         else:
-            # 只在有新增 / 警告 / 错误时推(避免每天推空消息),除非 --push always
-            should_push = (
-                args.push == "always"
-                or overall["new_items"]
-                or overall["warnings"]
-                or overall["errors"]
-            )
-            if should_push:
-                text = notify.format_summary(overall)
-                ok, err = notify.feishu_text(webhook, text)
+            webhook = args.webhook or notify.get_webhook_url()
+            if not webhook:
+                print("[警告] --push 但没找到 webhook URL,设 FEISHU_WEBHOOK 环境变量或用 --webhook",
+                      file=sys.stderr)
+            else:
+                ok, err = notify.feishu_card(webhook, card)
                 if ok:
                     print("[推送] 已发送到飞书")
                 else:
                     print(f"[推送] 失败: {err}", file=sys.stderr)
-            else:
-                print("[推送] 无新增/警告,跳过(用 --push always 强制推)")
 
     # 任何 source 失败就 exit code != 0
     return 1 if overall["errors"] else 0
@@ -182,6 +180,67 @@ _WIZARD_LOGINS = [
 ]
 
 
+def _login_feishu() -> str:
+    """配置飞书 webhook URL,返回 'done' / 'skip' / 'quit'。"""
+    print()
+    print("  ── 飞书推送  (粘贴 webhook URL,以后定时推送用)")
+
+    existing = notify.get_webhook_url()
+    if existing:
+        src_label = "环境变量 FEISHU_WEBHOOK" if notify.webhook_source() == "env" else "auth/feishu_webhook.txt"
+        masked = existing[:55] + "…" if len(existing) > 60 else existing
+        print(f"     当前状态: 已配置 ({src_label})")
+        print(f"               {masked}")
+        default_hint, default = "[s]", "s"
+    else:
+        print("     当前状态: 未配置")
+        default_hint, default = "[l]", "l"
+
+    while True:
+        ans = input(f"     [l]配置 / [s]跳过 / [q]退出向导  {default_hint}: ").strip().lower()
+        if not ans:
+            ans = default
+        if ans in ("s", "skip", "n", "no"):
+            print("     [跳过]")
+            return "skip"
+        if ans in ("q", "quit", "exit"):
+            return "quit"
+        if ans in ("l", "login", "y", "yes", "c", "config"):
+            break
+        print("     无效输入,请输 l / s / q")
+
+    print()
+    print("     去飞书 App 拿 webhook:")
+    print("       1) 找一个群(没有就新建一个,只有你自己也行)")
+    print("       2) 群设置 → 群机器人 → 添加机器人 → 自定义机器人")
+    print("       3) 起个名(如 claw-watch)→ 添加 → 复制弹出的 URL")
+    print()
+
+    while True:
+        url = input("     粘贴 webhook URL(留空取消): ").strip()
+        if not url:
+            print("     [跳过]")
+            return "skip"
+        if not url.startswith("https://open.feishu.cn/open-apis/bot/v2/hook/"):
+            print("     [警告] URL 不像飞书 webhook(应以 https://open.feishu.cn/open-apis/bot/v2/hook/ 开头)")
+            confirm = input("     仍然使用? [y/N]: ").strip().lower()
+            if confirm not in ("y", "yes"):
+                continue
+
+        print("     [测试] 正在发送一张测试卡片...")
+        ok, err = notify.feishu_card(url, notify.build_test_card())
+        if not ok:
+            print(f"     [失败] {err}")
+            retry = input("     重新粘贴? [Y/n]: ").strip().lower()
+            if retry in ("n", "no"):
+                return "skip"
+            continue
+        notify.save_webhook_url(url)
+        print("     [OK] 测试卡片已发送,去群里看一眼,应该收到 ✅ 绿色卡片")
+        print(f"     [保存] webhook 已写入 {notify._WEBHOOK_FILE}")
+        return "done"
+
+
 def _login_one(src_name: str, display: str, hint: str) -> str:
     """走一个 source 的登录,返回 'done' / 'skip' / 'quit'。"""
     src = get_source(src_name)
@@ -237,13 +296,16 @@ def cmd_login(args) -> int:
 
     # 向导模式
     print("\n=== claw-watch 登录向导 ===")
-    print("将依次引导你登录 3 个需要账号的源。每一步都可以跳过。")
+    print("将依次引导你登录 3 个需要账号的源 + 1 个飞书 webhook。每一步都可以跳过。")
     for src_name, display, hint in _WIZARD_LOGINS:
         if _login_one(src_name, display, hint) == "quit":
             print("\n向导已退出。后续可随时跑 `claw-watch login` 继续。")
             return 0
+    if _login_feishu() == "quit":
+        print("\n向导已退出。后续可随时跑 `claw-watch login` 继续。")
+        return 0
     print("\n=== 向导完成 ===")
-    print("跑 `claw-watch status` 看登录态,或 `claw-watch check` 试一次抓取。")
+    print("跑 `claw-watch status` 看登录态,或 `claw-watch check --push` 试一次抓取 + 推送。")
     return 0
 
 
@@ -269,9 +331,15 @@ def main(argv: list[str] | None = None) -> int:
         nargs="?",
         const="auto",
         choices=["auto", "always"],
-        help="跑完后推送到飞书 webhook。auto=只在有新增/警告时推,always=每次必推",
+        help="跑完后推送一张飞书卡片(每次都推,平稳日子是绿色'各源平稳'卡)。"
+             "always 只是兼容旧用法,行为与不带参一致",
     )
     p_check.add_argument("--webhook", help="飞书 webhook URL(覆盖 FEISHU_WEBHOOK 环境变量)")
+    p_check.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="--push 时只打印卡片 JSON 不真发,用来调样式",
+    )
     p_check.set_defaults(func=cmd_check)
 
     p_status = sub.add_parser("status", help="显示各 source 状态 + 登录态健康")
