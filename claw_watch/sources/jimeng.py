@@ -33,6 +33,19 @@ def _profile_alive() -> bool:
     ).returncode == 0
 
 
+def _looks_like_login_page(page) -> bool:
+    """fetch 时遇到登录页的简单判断 —— URL 含 passport/login,或 body 含明显登录字样。"""
+    try:
+        url = (page.url or "").lower()
+        if "passport" in url or "/login" in url or "signin" in url:
+            return True
+        text = page.evaluate("() => document.body.innerText.slice(0, 500)") or ""
+        markers = ("扫码登录", "手机号登录", "密码登录", "短信验证码", "登录抖音账号")
+        return any(m in text for m in markers)
+    except Exception:
+        return False
+
+
 def _start_chrome(extra_args: Optional[list[str]] = None) -> None:
     """用 `open -na` 启一个全新 Chrome 实例。
 
@@ -94,7 +107,7 @@ def _wait_for_cdp(port: int, timeout_s: int = 15) -> bool:
     return False
 
 
-def _stop_chrome(wait_s: int = 10) -> None:
+def _stop_chrome(wait_s: int = 30) -> None:
     """按 --user-data-dir 路径精确 kill 我们启动的那个 Chrome,绝不动用户主 Chrome。
 
     发完 SIGTERM 必须**等 Chrome 真的退出**,不能立刻返回 —— 因为 Chrome 收到
@@ -224,6 +237,14 @@ class JimengSource(BaseSource):
                     debug_events.append("SiderMenuNotification 出现")
                 except Exception:
                     debug_events.append("SiderMenuNotification 20s 内没出现")
+                    # 大概率 profile 失效跳了登录页 —— 立刻退,别让用户白白看着登录窗口
+                    if _looks_like_login_page(page):
+                        debug_events.append("检测到登录页 → 提前退出")
+                        return FetchResult(
+                            source=self.name, ok=False,
+                            error="登录态失效,请跑 `claw-watch login jimeng` 重新登录",
+                            login=_login_health(),
+                        )
                 page.wait_for_timeout(1000)
 
                 bell = page.evaluate(
