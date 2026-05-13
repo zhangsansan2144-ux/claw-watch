@@ -12,7 +12,7 @@ AI 视频/图片生成产品的更新监控 —— 一行命令检查可灵 / Vi
 
 ```bash
 # 1) 拉代码
-git clone https://github.com/<你的用户名>/claw-watch.git
+git clone https://github.com/zhangsansan2144-ux/claw-watch.git
 cd claw-watch
 
 # 2) 一键安装(创建 venv → 装依赖 → 装 Chromium ~150MB)
