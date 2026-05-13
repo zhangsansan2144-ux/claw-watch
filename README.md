@@ -2,7 +2,7 @@
 
 AI 视频/图片生成产品的更新监控 —— 一行命令检查可灵 / Vidu / 即梦 / 海螺 / LibLib / TapNow / Lovart / Runway / 拍我的最新动态,可推送到飞书。
 
-需要登录的源(Vidu / 即梦 / LibLib)用你**自己的账号**抓你**自己**的通知,所以每人都得各装各的。
+需要登录的源(即梦 / LibLib)用你**自己的账号**抓你**自己**的通知,所以每人都得各装各的。
 
 > 🐣 **小白看这里:** 完全不会代码也能装,看 [QUICKSTART.md](QUICKSTART.md) —— 复制粘贴 4 条命令,15 分钟搞定,以后再也不用管。
 
@@ -32,21 +32,21 @@ cd ~ && git clone https://github.com/zhangsansan2144-ux/claw-watch.git && cd cla
 
 ---
 
-## 登录向导 (4 步,每步可跳过)
+## 登录向导 (3 步,每步可跳过)
 
 `.venv/bin/claw-watch login` 启动向导,依次问你:
 
-1. **Vidu** —— 自动弹无头浏览器到登录页,你扫码/输密码,回终端按 Enter 保存。覆盖 Vidu 通知 + 首页 Banner 两个源。
-2. **即梦** —— 自动弹**真 Chrome 窗口**(字节风控必需),登录后自动检测、保存、关闭。
-3. **LibLib** —— 同上,弹真 Chrome,登录后自动检测。
-4. **飞书 webhook** —— 提示你在飞书 App 里建机器人拿 URL,粘贴到终端 → 立刻发一张测试卡片到群里 → 保存到 `auth/feishu_webhook.txt`。
+1. **即梦** —— 自动弹**真 Chrome 窗口**(字节风控必需),登录后自动检测、保存、关闭。
+2. **LibLib** —— 同上,弹真 Chrome,登录后自动检测。
+3. **飞书 webhook** —— 提示你在飞书 App 里建机器人拿 URL,粘贴到终端 → 立刻发一张测试卡片到群里 → 保存到 `auth/feishu_webhook.txt`。
 
 每一步开头会显示当前状态(已登录还剩 X 天 / 已配置 / 未配置),已经搞定的默认 [s]跳过,没搞定的默认 [l]登录。
+
+> Vidu 的首页 Banner(`vidu_spotlights`)接口对未登录用户也开放,所以不需要登录;消息中心源已下线(几乎没有功能更新通知,价值低维护贵)。
 
 想单独再做某一步:
 
 ```bash
-.venv/bin/claw-watch login vidu_notifications
 .venv/bin/claw-watch login jimeng
 .venv/bin/claw-watch login liblib
 .venv/bin/claw-watch login                     # 重新走完整向导(配过的会默认跳)
@@ -56,7 +56,6 @@ cd ~ && git clone https://github.com/zhangsansan2144-ux/claw-watch.git && cd cla
 
 | 源 | 凭证 | 大约有效期 |
 |---|---|---|
-| Vidu | JWT | ~2 周 |
 | 即梦 | sessionid | ~1 年 |
 | LibLib | usertoken | ~1 年 |
 | 飞书 webhook | URL | 不过期(除非你在飞书里删机器人) |
@@ -87,7 +86,7 @@ tail -f data/cron.log    # 实时看运行日志
 ⚠️ **即梦每次会短暂弹 Chrome 窗口**(字节风控必需)。如果不希望被打扰,改 cron 行排除即梦:
 
 ```bash
-.venv/bin/claw-watch check --source kling,pai,hailuo,vidu_notifications,vidu_spotlights,liblib,tapnow,lovart,runway --push
+.venv/bin/claw-watch check --source kling,pai,hailuo,vidu_spotlights,liblib,tapnow,lovart,runway --push
 ```
 
 ---
@@ -135,8 +134,7 @@ tail -f data/cron.log    # 实时看运行日志
 | `tapnow` | app.tapnow.ai | 首页 Banner / 广告卡 | ❌ |
 | `lovart` | www.lovart.ai | Changelog 最新动态 | ❌ |
 | `runway` | runwayml.com | Changelog 产品更新 | ❌ |
-| `vidu_notifications` | vidu.cn | 通知中心 平台消息 | ✅ |
-| `vidu_spotlights` | vidu.cn | 首页 Banner / Spotlights | ✅(共用 Vidu 登录) |
+| `vidu_spotlights` | vidu.cn | 首页 Banner / Spotlights | ❌ |
 | `jimeng` | jimeng.jianying.com | 通知中心 官方消息 | ✅ |
 | `liblib` | liblib.art | 通知中心 官方通知 | ✅ |
 
@@ -166,7 +164,7 @@ skill 装在 `~/.claude/skills/claw-watch/SKILL.md`(本仓库不带,需要单独
 
 - "今天可灵有啥新功能?"
 - "看一下 AI 产品监控状态"
-- "Vidu 登录态过期了,帮我重新登录"
+- "即梦 登录态过期了,帮我重新登录"
 
 Claude Code 会自动调 `claw-watch` CLI 并把结果总结给你。
 
@@ -174,7 +172,6 @@ Claude Code 会自动调 `claw-watch` CLI 并把结果总结给你。
 
 ## 数据隐私 ⚠️
 
-- `auth/vidu_auth.json` —— 含 JWT,可登录你的 Vidu 账号
 - `auth/jimeng_chrome_profile/` —— 含 Cookie,可登录你的字节账号
 - `auth/liblib_chrome_profile/` + `auth/liblib_auth.json` —— 含 usertoken,可登录你的 LibLib 账号
 

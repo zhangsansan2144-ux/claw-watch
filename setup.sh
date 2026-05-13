@@ -214,16 +214,16 @@ install_cron_with_guidance() {
 # 非交互模式(CI / 管道)直接打印手动提示退出
 if [ ! -t 0 ] || [ ! -t 1 ]; then
     echo "下一步(交互式跑 ./setup.sh 会自动引导,这里手动版):"
-    echo "  .venv/bin/claw-watch login    # 4 步向导:vidu / jimeng / liblib / 飞书 webhook"
+    echo "  .venv/bin/claw-watch login    # 3 步向导:jimeng / liblib / 飞书 webhook"
     echo "  .venv/bin/claw-watch check --push"
     echo "  装定时任务: (crontab -l 2>/dev/null; echo '$CRON_LINE') | crontab -"
     exit 0
 fi
 
 # ─── 询问 1:登录向导 ────────────────────────────────────────────────
-echo -e "${BOLD}登录向导${NC}: 4 步 —— vidu / 即梦 / liblib + 飞书 webhook"
-echo "  · 前 3 步会弹浏览器让你登录账号,每步可跳过"
-echo "  · 第 4 步粘飞书 webhook URL,会立刻发一张测试卡片"
+echo -e "${BOLD}登录向导${NC}: 3 步 —— 即梦 / liblib + 飞书 webhook"
+echo "  · 前 2 步会弹浏览器让你登录账号,每步可跳过"
+echo "  · 第 3 步粘飞书 webhook URL,会立刻发一张测试卡片"
 read -r -p "  现在开始? [Y/n]: " ans
 ans=${ans:-Y}
 if [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]; then
@@ -287,7 +287,7 @@ if [ "$CRON_STATUS" = "安装失败" ]; then
     echo
 fi
 echo "随时手动跑:"
-echo "  .venv/bin/claw-watch login          # 4 步登录向导"
+echo "  .venv/bin/claw-watch login          # 3 步登录向导"
 echo "  .venv/bin/claw-watch check --push   # 抓取 + 推飞书"
 echo "  .venv/bin/claw-watch status         # 看登录态健康"
 echo

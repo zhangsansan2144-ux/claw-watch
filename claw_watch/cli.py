@@ -6,8 +6,8 @@
   claw-watch check --output json         JSON 输出(给 agent 用)
   claw-watch check --output text         人类可读(默认)
   claw-watch status                      显示每个 source 的状态 + 登录健康
-  claw-watch login                       登录向导(依次跑 vidu/jimeng/liblib,可跳过)
-  claw-watch login vidu_notifications    只登录指定 source
+  claw-watch login                       登录向导(依次跑 jimeng/liblib + 飞书 webhook,可跳过)
+  claw-watch login jimeng                只登录指定 source
   claw-watch sources                     列出所有可用 source
 """
 
@@ -171,12 +171,11 @@ def cmd_status(args) -> int:
     return 0
 
 
-# 登录向导:无参 `claw-watch login` 时依次走这三个。
-# (vidu_notifications 和 vidu_spotlights 共用同一份登录,所以只列一次)
+# 登录向导:无参 `claw-watch login` 时依次走这两个。
+# (vidu 已下线消息中心源,首页 Banner 免登录,所以不在向导里)
 _WIZARD_LOGINS = [
-    ("vidu_notifications", "Vidu",   "vidu.cn  ·  覆盖通知 + 首页 Banner 两个源"),
-    ("jimeng",             "即梦",   "jimeng.jianying.com  ·  会弹出真 Chrome,登录后自动检测"),
-    ("liblib",             "LibLib", "liblib.art  ·  会弹出真 Chrome,登录后自动检测"),
+    ("jimeng", "即梦",   "jimeng.jianying.com  ·  会弹出真 Chrome,登录后自动检测"),
+    ("liblib", "LibLib", "liblib.art  ·  会弹出真 Chrome,登录后自动检测"),
 ]
 
 
@@ -296,7 +295,7 @@ def cmd_login(args) -> int:
 
     # 向导模式
     print("\n=== claw-watch 登录向导 ===")
-    print("将依次引导你登录 3 个需要账号的源 + 1 个飞书 webhook。每一步都可以跳过。")
+    print("将依次引导你登录 2 个需要账号的源 + 1 个飞书 webhook。每一步都可以跳过。")
     for src_name, display, hint in _WIZARD_LOGINS:
         if _login_one(src_name, display, hint) == "quit":
             print("\n向导已退出。后续可随时跑 `claw-watch login` 继续。")
@@ -347,12 +346,12 @@ def main(argv: list[str] | None = None) -> int:
 
     p_login = sub.add_parser(
         "login",
-        help="登录需要账号的源。无参数=向导(依次走 vidu/jimeng/liblib)",
+        help="登录需要账号的源。无参数=向导(依次走 jimeng/liblib + 飞书 webhook)",
     )
     p_login.add_argument(
         "source",
         nargs="?",
-        help="只登录指定 source(vidu_notifications / jimeng / liblib)。省略则进入向导",
+        help="只登录指定 source(jimeng / liblib)。省略则进入向导",
     )
     p_login.set_defaults(func=cmd_login)
 

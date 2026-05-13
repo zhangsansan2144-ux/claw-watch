@@ -7,7 +7,6 @@ from . import kling, pai, vidu, jimeng, hailuo, liblib, tapnow, lovart, runway
 SOURCES: dict[str, BaseSource] = {
     "kling": kling.KlingSource(),
     "pai": pai.PaiSource(),
-    "vidu_notifications": vidu.ViduNotificationsSource(),
     "vidu_spotlights": vidu.ViduSpotlightsSource(),
     "jimeng": jimeng.JimengSource(),
     "hailuo": hailuo.HailuoSource(),

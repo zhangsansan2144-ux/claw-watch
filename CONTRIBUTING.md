@@ -21,7 +21,7 @@ claw-watch/
 │       ├── tapnow.py
 │       ├── lovart.py       # Next.js 流式 chunk 抽 JSON
 │       ├── runway.py       # Next.js + innerText 行解析
-│       ├── vidu.py         # 一次 fetch 同时拿 notifications + spotlights
+│       ├── vidu.py         # 首页 spotlights / banner(免登录)
 │       ├── jimeng.py       # CDP attach 真实 Chrome(字节风控)
 │       └── liblib.py       # 登录用真 Chrome(open -na),fetch 用 headless
 ├── data/                   # 运行时生成,*.json 不入库
@@ -45,7 +45,7 @@ claw-watch/
 class Item:
     id: str            # 用于 diff,必填
     title: str
-    source: str        # 'kling' / 'vidu_notifications' / ...
+    source: str        # 'kling' / 'vidu_spotlights' / ...
     date: str | None = None       # ISO YYYY-MM-DD
     content: str | None = None
     url: str | None = None
@@ -63,13 +63,12 @@ class Item:
 最简单的参考:[kling.py](claw_watch/sources/kling.py) —— headless 浏览器 + XHR 拦截。
 
 需要登录的参考顺序(由易到难):
-- [vidu.py](claw_watch/sources/vidu.py) —— Playwright storage_state + JWT 解码
 - [liblib.py](claw_watch/sources/liblib.py) —— 真 Chrome 登录 + headless fetch
 - [jimeng.py](claw_watch/sources/jimeng.py) —— CDP attach 真 Chrome(最复杂)
 
 ## 反爬笔记
 
-- **Vidu**: EdgeOne 指纹,headless 必须带 `--disable-blink-features=AutomationControlled` + UA + stealth init script
+- **Vidu (spotlights)**: EdgeOne 指纹,headless 必须带 `--disable-blink-features=AutomationControlled` + UA + stealth init script(免登录,但反爬还是要绕)
 - **即梦**: ByteDance 风控,**必须** CDP attach 真 Chrome(`/Applications/Google Chrome.app`)
 - **LibLib**: 阿里 WAF + token-based,登录用真 Chrome,fetch 走带 token 的 headless
 - **TapNow**: TLS 握手偶发超时,代码里有重试
