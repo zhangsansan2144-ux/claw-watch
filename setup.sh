@@ -117,10 +117,15 @@ echo
 echo -e "${GREEN}${BOLD}✓ 安装完成${NC}"
 echo
 
+mkdir -p data auth
+
 CRON_LINE="0 11 * * 2,5 cd \"$PROJECT_DIR\" && .venv/bin/claw-watch check --push >> data/cron.log 2>&1"
 # 用 PROJECT_DIR 作为 marker —— 它出现在 cron 行的 cd 部分,且包含完整路径,
 # 不会跟同机其他 claw-watch 安装(如果未来有)冲突
 CRON_MARKER="cd \"$PROJECT_DIR\""
+LOGIN_STATUS="跳过"
+CRON_STATUS="跳过"
+FIRST_RUN_STATUS="跳过"
 
 # 非交互模式(CI / 管道)直接打印手动提示退出
 if [ ! -t 0 ] || [ ! -t 1 ]; then
@@ -139,25 +144,41 @@ read -r -p "  现在开始? [Y/n]: " ans
 ans=${ans:-Y}
 if [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]; then
     echo
-    .venv/bin/claw-watch login || echo -e "  ${YELLOW}⚠${NC}  向导未完成。后续可手动跑 \`.venv/bin/claw-watch login\`"
+    if .venv/bin/claw-watch login; then
+        LOGIN_STATUS="完成"
+    else
+        LOGIN_STATUS="未完成"
+        echo -e "  ${YELLOW}⚠${NC}  向导未完成。后续可手动跑 \`.venv/bin/claw-watch login\`"
+    fi
 fi
 echo
 
 # ─── 询问 2:装定时任务(crontab) ────────────────────────────────
 echo -e "${BOLD}定时任务${NC}: 周二 + 周五 北京时间 11:00 自动跑 + 推飞书"
-if crontab -l 2>/dev/null | grep -Fq "$CRON_MARKER"; then
+EXISTING_CRON="$(crontab -l 2>/dev/null || true)"
+if printf '%s\n' "$EXISTING_CRON" | grep -Fq "$CRON_MARKER"; then
     echo -e "  ${GREEN}✓${NC} crontab 里已有这个 claw-watch 的任务,跳过"
+    CRON_STATUS="已存在"
 else
     read -r -p "  装吗? [Y/n]: " ans
     ans=${ans:-Y}
     if [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-        (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
-        echo -e "  ${GREEN}✓${NC} 已装"
-        echo "    · 看任务:    crontab -l"
-        echo "    · 改时间:    crontab -e   (然后改带 claw-watch 的那一行)"
-        echo "    · 删任务:    crontab -e   (删那一行)"
-        echo "    · 看运行日志: tail -f $PROJECT_DIR/data/cron.log"
+        if (printf '%s\n' "$EXISTING_CRON"; echo "$CRON_LINE") | crontab -; then
+            echo -e "  ${GREEN}✓${NC} 已装"
+            CRON_STATUS="已安装"
+            echo "    · 看任务:    crontab -l"
+            echo "    · 改时间:    crontab -e   (然后改带 claw-watch 的那一行)"
+            echo "    · 删任务:    crontab -e   (删那一行)"
+            echo "    · 看运行日志: tail -f $PROJECT_DIR/data/cron.log"
+        else
+            CRON_STATUS="安装失败"
+            echo -e "  ${YELLOW}⚠${NC}  crontab 写入失败,先跳过定时任务安装"
+            echo "    不影响下面的首次手动验证;只是暂时不会自动定时跑。"
+            echo "    之后可重试:"
+            echo "      (crontab -l 2>/dev/null; echo '$CRON_LINE') | crontab -"
+        fi
     else
+        CRON_STATUS="跳过"
         echo "  跳过。想之后装,跑这条:"
         echo "    (crontab -l 2>/dev/null; echo '$CRON_LINE') | crontab -"
     fi
@@ -174,11 +195,26 @@ read -r -p "  跑吗?[Y/n]: " ans
 ans=${ans:-Y}
 if [[ "$ans" =~ ^[Yy]([Ee][Ss])?$ ]]; then
     echo
-    .venv/bin/claw-watch check --push || echo -e "  ${YELLOW}⚠${NC}  抓取过程有失败,看上面输出排查"
+    if .venv/bin/claw-watch check --push; then
+        FIRST_RUN_STATUS="完成"
+    else
+        FIRST_RUN_STATUS="有失败"
+        echo -e "  ${YELLOW}⚠${NC}  抓取过程有失败,看上面输出排查"
+    fi
 fi
 
 echo
-echo -e "${GREEN}${BOLD}✓ 全部完成${NC}"
+echo -e "${GREEN}${BOLD}✓ 安装流程结束${NC}"
+echo "结果:"
+echo "  · 登录向导: $LOGIN_STATUS"
+echo "  · 定时任务: $CRON_STATUS"
+echo "  · 首次验证: $FIRST_RUN_STATUS"
+echo
+if [ "$CRON_STATUS" = "安装失败" ]; then
+    echo -e "${YELLOW}下一步:${NC} 定时任务没装上,但你已经可以手动跑。想开启自动定时,稍后重试:"
+    echo "  (crontab -l 2>/dev/null; echo '$CRON_LINE') | crontab -"
+    echo
+fi
 echo "随时手动跑:"
 echo "  .venv/bin/claw-watch login          # 4 步登录向导"
 echo "  .venv/bin/claw-watch check --push   # 抓取 + 推飞书"
